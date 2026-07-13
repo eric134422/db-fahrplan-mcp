@@ -42,13 +42,6 @@ cp .env.example .env   # then paste your credentials into .env
   }
 }
 ```
-
-Or test interactively with the MCP Inspector:
-
-```bash
-npx @modelcontextprotocol/inspector uv run server.py
-```
-
 ## Architecture
 
 ```
@@ -71,6 +64,7 @@ The attribute semantics come from the official OpenAPI spec — download `Timeta
 - **Station search** is a prefix match on exact DB naming: `Stolberg(Rheinl)Hbf` works, `Stolberg Hbf` doesn't. Umlauts often fail; `*` works as a wildcard.
 - **Times** in the raw API are `YYMMddHHmm` strings in German local time; the parser converts them to ISO (`2026-07-13T14:47`).
 - **`/plan` slices are static** — they never contain delays. Real-time data lives exclusively in `/fchg` and `/rchg`.
+- **Fernverkehr (ICE/IC/EC/NJ) is included**, not just regional RE/RB/S — but in `/fchg`, an on-time long-distance train can show up as a bare stop (timestamps only, no `line`/`train` field), since the name is only attached to records that carry an actual delay/disruption. Use `/plan` (`get_departures`) if you need reliable train names for Fernverkehr.
 
 ## Roadmap
 
