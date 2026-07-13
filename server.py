@@ -4,14 +4,15 @@ Exposes station search, planned departures, and live changes as MCP tools.
 All tools return compact JSON parsed from the API's XML responses.
 """
 
+import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote
 
 from mcp.server.fastmcp import FastMCP
 
 from api import ApiError, fetch
-from parser import parse_stations, parse_timetable
+from parser import merge_changes, parse_stations, parse_timetable
 
 mcp = FastMCP("DB Fahrplan")
 
@@ -41,10 +42,10 @@ async def find_station(pattern: str) -> str:
 
 @mcp.tool()
 async def get_departures(eva_no: str, date: str | None = None, hour: str | None = None) -> str:
-    """Get the planned timetable for a station within one hour slice.
-
-    Static planned data (no delays - combine with get_live_changes for
-    real-time info). Defaults to the current date and hour.
+    """Get the timetable for a station within one hour slice, including
+    real-time data: delays (delay_minutes), platform changes, cancellations,
+    and added trips such as replacement buses. Defaults to the current
+    date and hour.
 
     Args:
         eva_no: EVA number of the station (e.g. "8000001" for Aachen Hbf).
@@ -56,10 +57,25 @@ async def get_departures(eva_no: str, date: str | None = None, hour: str | None 
     date = date or now.strftime("%y%m%d")
     hour = hour or now.strftime("%H")
     try:
-        xml = await fetch(f"/plan/{quote(eva_no)}/{quote(date)}/{quote(hour)}")
+        plan_xml, changes_xml = await asyncio.gather(
+            fetch(f"/plan/{quote(eva_no)}/{quote(date)}/{quote(hour)}"),
+            fetch(f"/fchg/{quote(eva_no)}"),
+        )
     except ApiError as e:
         return _json({"error": str(e)})
-    return _json(parse_timetable(xml))
+
+    timetable = parse_timetable(plan_xml)
+    try:
+        slice_start = datetime.strptime(f"{date}{hour}", "%y%m%d%H")
+    except ValueError:
+        return _json({"error": f"Invalid date/hour: {date}/{hour} (expected YYMMDD and HH)"})
+    merged = merge_changes(
+        timetable,
+        parse_timetable(changes_xml),
+        window_start=slice_start.strftime("%Y-%m-%dT%H:%M"),
+        window_end=(slice_start + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M"),
+    )
+    return _json(merged)
 
 
 @mcp.tool()
