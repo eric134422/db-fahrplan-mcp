@@ -1,0 +1,12 @@
+# Credentials — never commit
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+*.egg-info/
+
+# DB's own OpenAPI spec — download it yourself from the DB API Marketplace
+Timetables-*.json
