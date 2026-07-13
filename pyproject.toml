@@ -1,5 +1,5 @@
 [project]
-name = "db-timetable-mcp-py"
+name = "db-fahrplan-mcp"
 version = "0.1.0"
 description = "MCP server for the Deutsche Bahn Timetables API — station search, departures, live changes"
 readme = "README.md"

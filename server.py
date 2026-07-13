@@ -13,7 +13,7 @@ from mcp.server.fastmcp import FastMCP
 from api import ApiError, fetch
 from parser import parse_stations, parse_timetable
 
-mcp = FastMCP("DB Timetables")
+mcp = FastMCP("DB Fahrplan")
 
 
 def _json(data) -> str:
