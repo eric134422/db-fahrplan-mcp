@@ -1,0 +1,12 @@
+[project]
+name = "db-timetable-mcp-py"
+version = "0.1.0"
+description = "MCP server for the Deutsche Bahn Timetables API — station search, departures, live changes"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.28",
+    "mcp[cli]>=1.2.0",
+    "python-dotenv>=1.0",
+]
