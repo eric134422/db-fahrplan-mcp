@@ -9,11 +9,11 @@ Written in Python with [FastMCP](https://github.com/modelcontextprotocol/python-
 | Tool | API endpoint | Description |
 |---|---|---|
 | `find_station` | `/station/{pattern}` | Search stations by name, EVA number, or DS100 code |
-| `get_departures` | `/plan/{eva}/{date}/{hour}` | Planned timetable for one hour slice (defaults to now) |
+| `get_departures` | `/plan/…` + `/fchg/…` (merged) | Timetable for one hour slice (defaults to now), with real-time data: delays, platform changes, cancellations, added trips |
 | `get_live_changes` | `/fchg/{eva}` | All known real-time changes for the current day |
 | `get_recent_changes` | `/rchg/{eva}` | Only changes from the last 2 minutes (cheap polling) |
 
-Typical flow: `find_station("Aachen Hbf")` → EVA number → `get_departures(eva_no)` + `get_live_changes(eva_no)`.
+Typical flow: `find_station("Aachen Hbf")` → EVA number → `get_departures(eva_no)`.
 
 ## Setup
 
@@ -54,7 +54,7 @@ The layers are deliberately independent: `api.py` knows nothing about MCP, `pars
 
 ### Why a parsing layer?
 
-The Timetables API returns XML with single-letter attributes (`pt` = planned time, `ct` = changed time, `pp`/`cp` = planned/changed platform, `ppth` = route). Passing that to an LLM raw wastes context and invites misreading — a single `/fchg` response can exceed 50k characters. `parser.py` maps the attributes to named JSON fields, computes `delay_minutes`, resolves origin/destination from the route path, and drops empty fields. `get_live_changes` additionally caps the stop list (`limit` parameter, default 30) and reports the total count.
+The Timetables API returns XML with single-letter attributes (`pt` = planned time, `ct` = changed time, `pp`/`cp` = planned/changed platform, `ppth` = route). Passing that to an LLM raw wastes context and invites misreading — a single `/fchg` response can exceed 800k characters for a major hub. `parser.py` maps the attributes to named JSON fields, computes `delay_minutes`, resolves origin/destination from the route path, and drops empty fields. `get_live_changes` additionally caps the stop list (`limit` parameter, default 30) and reports the total count.
 
 The attribute semantics come from the official OpenAPI spec — download `Timetables-*.json` from the [DB API Marketplace](https://developers.deutschebahn.com/db-api-marketplace/apis/product/timetables) for the full dictionary.
 
@@ -63,7 +63,7 @@ The attribute semantics come from the official OpenAPI spec — download `Timeta
 - **EVA numbers** are the primary key for everything (`8000001` = Aachen Hbf). German stations start with `80`.
 - **Station search** is a prefix match on exact DB naming: `Stolberg(Rheinl)Hbf` works, `Stolberg Hbf` doesn't. Umlauts often fail; `*` works as a wildcard.
 - **Times** in the raw API are `YYMMddHHmm` strings in German local time; the parser converts them to ISO (`2026-07-13T14:47`).
-- **`/plan` slices are static** — they never contain delays. Real-time data lives exclusively in `/fchg` and `/rchg`.
+- **`/plan` slices are static** — they never contain delays. Real-time data lives exclusively in `/fchg` and `/rchg`, which is why `get_departures` fetches both and merges them server-side.
 - **Fernverkehr (ICE/IC/EC/NJ) is included**, not just regional RE/RB/S — but in `/fchg`, an on-time long-distance train can show up as a bare stop (timestamps only, no `line`/`train` field), since the name is only attached to records that carry an actual delay/disruption. Use `/plan` (`get_departures`) if you need reliable train names for Fernverkehr.
 
 ## Roadmap
