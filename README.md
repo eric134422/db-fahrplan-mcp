@@ -1,6 +1,6 @@
 # db-fahrplan-mcp
 
-An (unofficial) MCP server for the [Deutsche Bahn Timetables API](https://developers.deutschebahn.com/db-api-marketplace/apis/product/timetables) — station search, planned departures, and real-time changes (delays, platform changes, cancellations) as tools for Claude and other MCP clients.
+An (unofficial) MCP server for the [Deutsche Bahn Timetables API](https://developers.deutschebahn.com/db-api-marketplace/apis/product/timetables) - station search, planned departures and real-time changes (delays, platform changes, cancellations) as tools for Claude and other MCP hosts.
 
 Written in Python with [FastMCP](https://github.com/modelcontextprotocol/python-sdk). The API's XML responses are parsed into compact JSON server-side, so tool outputs stay small and readable for the model.
 
@@ -14,6 +14,63 @@ Written in Python with [FastMCP](https://github.com/modelcontextprotocol/python-
 | `get_recent_changes` | `/rchg/{eva}` | Only changes from the last 2 minutes (cheap polling) |
 
 Typical flow: `find_station("Aachen Hbf")` → EVA number → `get_departures(eva_no)`.
+
+### Definitions
+
+- **EVA number** — the unique numeric ID for a station in DB's systems (e.g. `8000001` = Aachen Hbf). Station names change and duplicate; EVA numbers don't, so every endpoint below keys off of it.
+- **`plan`** — the static, pre-planned timetable for one hour at a station. Never contains delays, only what *should* happen.
+- **`fchg`** ("full changes") — every known real-time change (delay, platform swap, cancellation, added trip) for the current operating day. Updated every 30s.
+- **`rchg`** ("recent changes") — a small subset of `fchg`: only changes from the last 2 minutes. Cheaper to poll frequently once you've already loaded `fchg` once.
+- **DS100** — DB's short alphabetic code for a station (e.g. `KA` for Aachen Hbf), used internally alongside the EVA number.
+
+## Example
+
+Prompt:
+
+```
+When's the next train from Aachen Hbf?
+```
+
+The agent calls `find_station("Aachen Hbf")`, then `get_departures(eva_no="8000001")`, and answers from the result:
+
+```json
+{
+  "id": "-5414170453134686351-2607131018-1",
+  "train": "RE 92111",
+  "line": "RE9",
+  "departure": {
+    "planned_time": "2026-07-13T10:18",
+    "changed_time": "2026-07-13T10:20",
+    "delay_minutes": 2,
+    "platform": "3",
+    "destination": "Düren"
+  }
+}
+```
+
+> RE9 to Düren, platform 3, 10:18 → running 2 min late, now 10:20.
+
+### Example: historical delay pattern
+
+Prompt:
+
+```
+How punctual has RE9 been today at Stolberg(Rheinl)Hbf?
+```
+
+The agent calls `find_station("Stolberg(Rheinl)Hbf")`, then `get_live_changes(eva_no="8000348", limit=100)`, filters the stops to `line == "RE9"`, and reasons over the `delay_minutes` across the day:
+
+```json
+[
+  { "train": "RE 92111", "delay_minutes": 2 },
+  { "train": "RE 92106", "delay_minutes": 1 },
+  { "train": "RE 92118", "delay_minutes": 1 },
+  { "train": "RE 92123", "delay_minutes": 0 },
+  { "train": "RE 92125", "delay_minutes": 0 }
+]
+```
+
+> RE9 has been very reliable today: 0–2 min delay across 5 trips, no cancellations. `get_live_changes` covers the whole operating day in one call, so this needs no extra polling — just one fetch per station.
 
 ## Setup
 
@@ -42,6 +99,8 @@ cp .env.example .env   # then paste your credentials into .env
   }
 }
 ```
+
+MCP servers are only picked up on startup, so **restart your CLI tool** (e.g. `claude`) after editing the config — a running session won't see the new server until it's relaunched.
 ## Architecture
 
 ```
